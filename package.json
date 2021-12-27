@@ -1,6 +1,9 @@
 {
   "dependencies": {
     "inquirer": "^8.2.0",
-    "puppeteer": "^13.0.1"
+    "puppeteer": "^13.0.1",
+    "uuid": "^8.3.2",
+    "winston": "^3.3.3",
+    "yargs": "^17.3.1"
   }
 }
