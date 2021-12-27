@@ -11,10 +11,12 @@ const downloadVanguardStatement = async (credentials) => {
     // pipe a Stream to the log zone
     console.log("Called with " + JSON.stringify(credentials))
     ui.updateBottomBar('Opening browser.');
-    const browser = await puppeteer.launch();
+    const browser = await puppeteer.launch({ headless: false });
     const page = await browser.newPage();
+    await page._client.send('Page.setDownloadBehavior', { behavior: 'allow', downloadPath: './' });
 
-    await page.setViewport({ width: 1366, height: 768 });
+
+    await page.setViewport({ width: 1366, height: 1768 });
     ui.updateBottomBar('Navigating to Vanguard UK');
     await page.goto('https://www.vanguardinvestor.co.uk');
 
@@ -52,31 +54,52 @@ const downloadVanguardStatement = async (credentials) => {
     page.$eval("body > div:nth-child(7) > div > div.layout-aside-wrap > div > div:nth-child(2) > div:nth-child(1) > div > div.container.container-page > div:nth-child(2) > div.row > div:nth-child(1) > div > div > div.col-fluid.col-right.col-xxs-order-1 > button", e => {
         e.scrollIntoView({ behavior: 'smooth', block: 'end', inline: 'end' });
     });
-
-    // await page.querySelector("body > div:nth-child(7) > div > div.layout-aside-wrap > div > div:nth-child(2) > div:nth-child(1) > div > div.container.container-page > div:nth-child(2) > div.row > div:nth-child(1) > div > div > div.col-fluid.col-right.col-xxs-order-1 > button")
-    //     .scrollIntoView({ behavior: 'smooth', block: 'end', inline: 'end' })
+    await page.screenshot({ path: 'afterscroll.png' });
+    //await page.querySelector("body > div:nth-child(7) > div > div.layout-aside-wrap > div > div:nth-child(2) > div:nth-child(1) > div > div.container.container-page > div:nth-child(2) > div.row > div:nth-child(1) > div > div > div.col-fluid.col-right.col-xxs-order-1 > button")
+    //    .scrollIntoView({ behavior: 'smooth', block: 'end', inline: 'end' })
     await page.click("body > div:nth-child(7) > div > div.layout-aside-wrap > div > div:nth-child(2) > div:nth-child(1) > div > div.container.container-page > div:nth-child(2) > div.row > div:nth-child(1) > div > div > div.col-fluid.col-right.col-xxs-order-1 > button")
     //await page.click("body > div:nth-child(7) > div > div.layout-aside-wrap > div > div:nth-child(2) > div:nth-child(1) > div > div.container.container-page > div:nth-child(2) > div.row > div:nth-child(1) > div > div > div.col-fluid.col-right.col-xxs-order-1 > button")
 
 
     ui.updateBottomBar('Choosing Client Transaction Listing - Excel');
+    ui.updateBottomBar('Waiting for popup transition to complete...');
+    await page.waitForTimeout(500); //hack to wait for transition
+    const reportSelector = (await page.$x("//select[contains(., 'Choose a report')]"))[0];
+
+
+    ui.updateBottomBar('...moving on');
     await page.screenshot({ path: 'reportgenerator.png' });
-    await page.waitForSelector("#__GUID_1033")
-    await page.select("#__GUID_1033", "Client Transactions Listing - Excel")
+    await reportSelector.select("3")
+    await page.screenshot({ path: 'afterselection.png' });
 
 
-    //todo select start date to be ages ago
+    // //todo select start date to be ages ago
 
     ui.updateBottomBar('Clicking Generate report');
-    await page.waitForSelector("body > div:nth-child(23) > div > div.lightbox-container > div > div.lightbox-content-500.file-upload-lightbox > div > div.content-aside.vspace-top-14 > button")
-    await page.click("body > div:nth-child(23) > div > div.lightbox-container > div > div.lightbox-content-500.file-upload-lightbox > div > div.content-aside.vspace-top-14 > button")
+    await page.waitForXPath("//button[contains(., 'Generate report')]")
+    const elements = await page.$x("//button[contains(., 'Generate report')]")
+    await elements[0].click()
 
-    await page.waitForFunction(() => !document.querySelector("body > div:nth-child(23) > div > div.lightbox-container > div > div.lightbox-content-500.file-upload-lightbox > div > div.content-aside.vspace-top-14 > button"));
 
-
-    ui.updateBottomBar('Waiting fro report - will refresh in one second');
+    ui.updateBottomBar('Waiting for report - will refresh in five seconds');
+    await page.waitForTimeout(5000); //hack to wait for transition
     await page.screenshot({ path: 'vanguard.png' });
+    await page.reload({ waitUntil: ["networkidle0", "domcontentloaded"] });
+
+    await page.waitForXPath("//button[contains(@class, 'action-download')]")
+
+
+    await page.screenshot({ path: 'vanguard.png' });
+
+    const buttons = await page.$x("//button[contains(@class, 'action-download')]")
+
+
+    await buttons[0].click()
+    ui.updateBottomBar('Clicked download, waiting a few seconds before closing browser');
+    await page.waitForTimeout(5000); //hack to wait for transition
+
     await browser.close();
+    ui.close()
 };
 
 const main = async () => {
