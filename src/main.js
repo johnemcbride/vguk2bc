@@ -4,6 +4,8 @@ const winston = require('winston');
 const uuid = require('uuid');
 var fs = require('fs');
 const yargs = require('yargs');
+var xlsx = require('node-xlsx');
+
 
 const argv = yargs
     .option('debug', {
@@ -11,6 +13,11 @@ const argv = yargs
         description: 'Debug mode - dumps html and screenshots',
         type: 'boolean'
     })
+    .alias('f', 'file')
+    .nargs('f', 1)
+    .describe('f', 'Avoid downloading and specify an already downloaded Vanguard Transaction Report')
+
+    .version(false)
     .help()
     .alias('help', 'h').argv;
 
@@ -175,24 +182,104 @@ const downloadVanguardStatement = async (credentials) => {
 };
 
 const main = async () => {
-    const credentials = await inquirer
-        .prompt([
-            {
-                type: 'text',
-                message: 'Enter Vanguard UK Username',
-                name: 'username'
-            },
-            {
-                type: 'password',
-                message: 'Enter Vanguard UK Password',
-                name: 'password',
-                mask: '*'
-            },
-        ])
+    let filename = ''
+    if (!argv.file) {
+        const credentials = await inquirer
+            .prompt([
+                {
+                    type: 'text',
+                    message: 'Enter Vanguard UK Username',
+                    name: 'username'
+                },
+                {
+                    type: 'password',
+                    message: 'Enter Vanguard UK Password',
+                    name: 'password',
+                    mask: '*'
+                },
+            ])
 
-    await downloadVanguardStatement(credentials)
+        await downloadVanguardStatement(credentials)
+        filename = executionId + '/LoadDocstore.Xls'
+    }
+    else {
+        logger.info('Beginning from already downloaded file ' + argv.file)
+        filename = argv.file
+    }
+    writeBeanFile(filename)
 
 }
+const writeBeanFile = (filename) => {
+    logger.info("Parsing " + filename)
+    let obj = xlsx.parse(filename); // parses a file
+    const transactions = []
+    for (let sheet of obj) {
+        logger.info("Inspect sheet " + sheet.name)
+        if (sheet.name !== 'Summary') {
+            logger.info("Reading sheet " + sheet.name)
+            let rownumber = 0
+            let inTable = false
+            for (let row of sheet.data) {
+                logger.info("Reading row " + rownumber)
+                //fine the start fo the investment transaction table
+                if (inTable && String(row[0]) != 'Cost') {
+                    logger.info("Adding transaction from row " + String(row))
+                    transactions.push({
+                        account: sheet.data[0][0],
+                        date: ExcelDateToJSDate(row[0]),
+                        security: row[1].replaceAll(' ', '_'),
+                        quantity: row[3],
+                        price: row[4],
+                        cost: row[5]
+                    })
+                }
+                if (String(row[0]) == 'Date' && rownumber > 5) {
+                    logger.info("Found top of transaction table")
+                    inTable = true
+                }
+
+                rownumber++
+            }
+        }
+        else {
+            logger.info("Skipping sheet " + sheet.name)
+        }
+    }
+    console.log(transactions)
+    let beanFileOutput = ''
+    for (let transaction of transactions) {
+        let buystring = transaction.quantity < 0 ? "Selling" : "Buying"
+        beanFileOutput += `${transaction.date} * "${buystring}" ${transaction.security}`;
+        beanFileOutput += `\n\tAssets:UK:Vanguard:${transaction.account}:${transaction.security}\t\t\t${transaction.quantity} ${transaction.security} {${transaction.price} GBP}`
+        beanFileOutput += `\n\tAssets:UK:Vanguard:${transaction.account}:Cash\t\t\t${transaction.cost} GBP\n\n`
+    }
+
+    fs.writeFile('beancount.txt', `${beanFileOutput}`, function (err) {
+        if (err) throw err;
+        logger.info(`Wrote beanfile to beancount.txt`);
+    });
+
+}
+
+function ExcelDateToJSDate(serial) {
+    var utc_days = Math.floor(serial - 25569);
+    var utc_value = utc_days * 86400;
+    var date_info = new Date(utc_value * 1000);
+
+    var fractional_day = serial - Math.floor(serial) + 0.0000001;
+
+    var total_seconds = Math.floor(86400 * fractional_day);
+
+    var seconds = total_seconds % 60;
+
+    total_seconds -= seconds;
+
+    var hours = Math.floor(total_seconds / (60 * 60));
+    var minutes = Math.floor(total_seconds / 60) % 60;
+
+    return date_info.getFullYear() + '-' + String(date_info.getMonth()).padStart(2, '0') + '-' + String(date_info.getDate()).padStart(2, '0');
+}
+
 
 const removeLastPath = (url) => {
     return url.substring(0, url.lastIndexOf('/'));
