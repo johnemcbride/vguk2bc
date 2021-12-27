@@ -249,14 +249,14 @@ const writeBeanFile = (filename) => {
     let beanFileOutput = ''
     for (let transaction of transactions) {
         let buystring = transaction.quantity < 0 ? "Selling" : "Buying"
-        beanFileOutput += `${transaction.date} * "${buystring}" ${transaction.security}`;
+        beanFileOutput += `${transaction.date} * "${buystring} ${transaction.security}"`;
         beanFileOutput += `\n\tAssets:UK:Vanguard:${transaction.account}:${transaction.security}\t\t\t${transaction.quantity} ${transaction.security} {${transaction.price} GBP}`
         beanFileOutput += `\n\tAssets:UK:Vanguard:${transaction.account}:Cash\t\t\t${transaction.cost} GBP\n\n`
     }
 
-    fs.writeFile('beancount.txt', `${beanFileOutput}`, function (err) {
+    fs.writeFile('beancount.beancount', `${beanFileOutput}`, function (err) {
         if (err) throw err;
-        logger.info(`Wrote beanfile to beancount.txt`);
+        logger.info(`Wrote beanfile to beancount.beancount`);
     });
 
 }
